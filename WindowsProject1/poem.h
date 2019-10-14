@@ -100,9 +100,16 @@ private:
 	std::priority_queue< wordsType> pqWords[2]; // queue of all words
 
 	static FunctionPtr nextParModelFunc;
+	//static FunctionPtr insertSlotModelFunc;
+	//static FunctionPtr replaceSlotModelFunc;
+	//static FunctionPtr deleteSlotModelFunc;
 	static size_t vocabSize;
 	static Variable nextParInputVarForward;
 	static Variable nextParInputVarBackward;
+	//static Variable insertSlotInputVarForward;
+	//static Variable insertSlotInputVarBackward;
+	//static Variable replaceSlotInputVarForward;
+	//static Variable deleteSlotInputVarForward;
 	static int indexOfDot;
 	static int indexOfSpace;
 	vector<nodeType> nodes;

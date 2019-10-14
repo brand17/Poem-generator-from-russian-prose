@@ -26,10 +26,17 @@ std::unordered_map<string, size_t> nodeType::endStringToCode;
 vector<string> nodeType::endCodeToString;
 poem::syllableType poem::syllableInfo;
 FunctionPtr poem::nextParModelFunc;
+//FunctionPtr poem::insertSlotModelFunc;
+//FunctionPtr poem::replaceSlotModelFunc;
+//FunctionPtr poem::deleteSlotModelFunc;
 std::unordered_map<string, size_t> poem::vocabToIndex;
 size_t poem::vocabSize;
 Variable poem::nextParInputVarForward;
 Variable poem::nextParInputVarBackward;
+//Variable poem::insertSlotInputVarForward;
+//Variable poem::insertSlotInputVarBackward;
+//Variable poem::replaceSlotInputVarForward;
+//Variable poem::deleteSlotInputVarForward;
 int poem::indexOf$;
 int poem::indexOfDot;
 int poem::indexOfSpace;
@@ -197,6 +204,9 @@ poem::poem() {
 
 	// Load the model.
 	nextParModelFunc= Function::Load(nextParModel, CNTK::DeviceDescriptor::CPUDevice());
+	//insertSlotModelFunc = Function::Load(L"lm_insert.dnn", CNTK::DeviceDescriptor::CPUDevice());
+	//replaceSlotModelFunc = Function::Load(L"lm_replace.dnn", CNTK::DeviceDescriptor::CPUDevice());
+	//deleteSlotModelFunc = Function::Load(L"lm_delete.dnn", CNTK::DeviceDescriptor::CPUDevice());
 
 	string s = "àå¸èîóûýþÿ";
 	for (unsigned char a : s)
@@ -222,6 +232,10 @@ poem::poem() {
 	// Get input variables
 	nextParInputVarForward = nextParModelFunc->Arguments()[0];
 	nextParInputVarBackward = nextParModelFunc->Arguments()[1];
+	//insertSlotInputVarForward = insertSlotModelFunc->Arguments()[0];
+	//insertSlotInputVarBackward = insertSlotModelFunc->Arguments()[1];
+	//replaceSlotInputVarForward = replaceSlotModelFunc->Arguments()[0];
+	//deleteSlotInputVarForward = deleteSlotModelFunc->Arguments()[0];
 	vocabSize = nextParInputVarForward.Shape().TotalSize();
 	startSet[0] = 0;
 	//syllableInfo = { 7,2,0 };
@@ -270,9 +284,6 @@ bool poem::updateText(string s) {
 	std::vector<std::string> words((std::istream_iterator<std::string>(iss)),
 		std::istream_iterator<std::string>());
 
-	/*std::regex regex{ R"([\s]+)" }; 
-	std::sregex_token_iterator it{ s.begin(), s.end(), regex, -1 };
-	std::vector<std::string> words{ it, {} };*/
 	for (auto& w : words) {
 		auto accPos = w.find('`');
 		if (accPos == std::string::npos) {// add accents
@@ -308,6 +319,8 @@ bool poem::updateText(string s) {
 	}
 
 	wordsType::slotSeq.resize((2*nodes.size()-1)*vocabToIndex.size());
+
+	// evaluate nextWord model
 	for (int j = 0; j < 2; j++) {
 		// create arrays of best words (priority queues) for every slot (not rythmed)
 		std::vector<size_t> seqDataFwd;
@@ -354,6 +367,157 @@ bool poem::updateText(string s) {
 	{
 		throw("The number of elements in the slot sequence is not a multiple of sample size");
 	}
+
+	// evaluate insert point model - useless - weak correllation
+	/*vector <float> insertProbs(nodes.size()*2);
+	fill(insertProbs.begin(), insertProbs.end(), 1);
+	vector <float> deleteProbs(nodes.size());
+	float totalReplace = 0;
+	float totalDelete = 0;*/
+	/*{
+		// create arrays of insertion probabilities for every slot
+		std::vector<size_t> seqDataFwd;
+		std::vector<size_t> seqDataBwd;
+		seqDataFwd.push_back(indexOfDot);
+		for (int i = 0; i < nodes.size()-1; i++)
+		{
+			seqDataFwd.push_back(nodes[i].index);
+		}
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			seqDataBwd.push_back(nodes[i].index);
+		}
+
+		// Create input value using one-hot vector and input data map
+		ValuePtr inputValForward = Value::CreateSequence<float>(vocabSize, seqDataFwd, CNTK::DeviceDescriptor::CPUDevice());
+		ValuePtr inputValBackward = Value::CreateSequence<float>(vocabSize, seqDataBwd, CNTK::DeviceDescriptor::CPUDevice());
+		std::unordered_map<Variable, ValuePtr> inputDataMap = { { insertSlotInputVarForward, inputValForward },{ insertSlotInputVarBackward, inputValBackward } };
+		// The model has only one output.
+		// If the model has more than one output, use modelFunc->Outputs to get the list of output variables.
+		Variable outputVar = insertSlotModelFunc->Output();
+		// Create output data map. Using null as Value to indicate using system allocated memory.
+		// Alternatively, create a Value object and add it to the data map.
+		std::unordered_map<Variable, ValuePtr> outputDataMap = { { outputVar, nullptr } };
+		// Start evaluation on the device
+		insertSlotModelFunc->Evaluate(inputDataMap, outputDataMap, CNTK::DeviceDescriptor::CPUDevice());
+		// Get evaluate result as dense output
+		ValuePtr outputVal = outputDataMap[outputVar];
+		std::vector<std::vector<float>> outputData;
+		outputVal->CopyVariableValueTo(outputVar, outputData);
+
+		// output the result
+		int outputSampleSize = outputVar.Shape().TotalSize();
+		if (outputData.size() != 1)
+		{
+			throw("Only one sequence of slots is expected as output.");
+		}
+		int numOfSlots = outputData[0].size() / outputSampleSize;
+		float* a = &outputData[0][0];
+		//float total = 0;
+		for (int i = 0; i < numOfSlots; i++) {
+			insertProbs[i*2] = exp(a[1]) / (exp(a[0]) + exp(a[1]));
+			//total += insertProbs[i];
+			a += 2;
+		}
+		if (outputData[0].size() % outputSampleSize != 0)
+		{
+			throw("The number of elements in the slot sequence is not a multiple of sample size");
+		}
+	}*/
+
+	// evaluate replace point model
+	/*{
+		// create arrays of insertion probabilities for every slot
+		std::vector<size_t> seqDataFwd;
+		seqDataFwd.push_back(indexOfDot);
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			seqDataFwd.push_back(nodes[i].index);
+		}
+
+		// Create input value using one-hot vector and input data map
+		ValuePtr inputValForward = Value::CreateSequence<float>(vocabSize, seqDataFwd, CNTK::DeviceDescriptor::CPUDevice());
+		std::unordered_map<Variable, ValuePtr> inputDataMap = { { replaceSlotInputVarForward, inputValForward }};
+		// The model has only one output.
+		// If the model has more than one output, use modelFunc->Outputs to get the list of output variables.
+		Variable outputVar = replaceSlotModelFunc->Output();
+		// Create output data map. Using null as Value to indicate using system allocated memory.
+		// Alternatively, create a Value object and add it to the data map.
+		std::unordered_map<Variable, ValuePtr> outputDataMap = { { outputVar, nullptr } };
+		// Start evaluation on the device
+		replaceSlotModelFunc->Evaluate(inputDataMap, outputDataMap, CNTK::DeviceDescriptor::CPUDevice());
+		// Get evaluate result as dense output
+		ValuePtr outputVal = outputDataMap[outputVar];
+		std::vector<std::vector<float>> outputData;
+		outputVal->CopyVariableValueTo(outputVar, outputData);
+
+		// output the result
+		int outputSampleSize = outputVar.Shape().TotalSize();
+		if (outputData.size() != 1)
+		{
+			throw("Only one sequence of slots is expected as output.");
+		}
+		int numOfSlots = outputData[0].size() / outputSampleSize;
+		float* a = &outputData[0][2];
+		for (int i = 0; i < numOfSlots-1; i++) {
+			float p= exp(a[1]) / (exp(a[0]) + exp(a[1]));
+			insertProbs[i * 2 + 1] = p;
+			totalReplace += p;
+			//insertProbs[i * 2 + 1] = a[1] / (a[0] + a[1]);
+			a += 2;
+		}
+		if (outputData[0].size() % outputSampleSize != 0)
+		{
+			throw("The number of elements in the slot sequence is not a multiple of sample size");
+		}
+	}*/
+
+	// evaluate delete point model
+	/*{
+		// create arrays of insertion probabilities for every slot
+		std::vector<size_t> seqDataFwd;
+		seqDataFwd.push_back(indexOfDot);
+		for (int i = 0; i < nodes.size(); i++)
+		{
+			seqDataFwd.push_back(nodes[i].index);
+		}
+
+		// Create input value using one-hot vector and input data map
+		ValuePtr inputValForward = Value::CreateSequence<float>(vocabSize, seqDataFwd, CNTK::DeviceDescriptor::CPUDevice());
+		std::unordered_map<Variable, ValuePtr> inputDataMap = { { deleteSlotInputVarForward, inputValForward } };
+		// The model has only one output.
+		// If the model has more than one output, use modelFunc->Outputs to get the list of output variables.
+		Variable outputVar = deleteSlotModelFunc->Output();
+		// Create output data map. Using null as Value to indicate using system allocated memory.
+		// Alternatively, create a Value object and add it to the data map.
+		std::unordered_map<Variable, ValuePtr> outputDataMap = { { outputVar, nullptr } };
+		// Start evaluation on the device
+		deleteSlotModelFunc->Evaluate(inputDataMap, outputDataMap, CNTK::DeviceDescriptor::CPUDevice());
+		// Get evaluate result as dense output
+		ValuePtr outputVal = outputDataMap[outputVar];
+		std::vector<std::vector<float>> outputData;
+		outputVal->CopyVariableValueTo(outputVar, outputData);
+
+		// output the result
+		int outputSampleSize = outputVar.Shape().TotalSize();
+		if (outputData.size() != 1)
+		{
+			throw("Only one sequence of slots is expected as output.");
+		}
+		int numOfSlots = outputData[0].size() / outputSampleSize;
+		float* a = &outputData[0][2];
+		for (int i = 0; i < numOfSlots - 1; i++) {
+			float p= exp(a[1]) / (exp(a[0]) + exp(a[1]));
+			deleteProbs[i] = p;
+			totalDelete += p;
+			a += 2;
+		}
+		if (outputData[0].size() % outputSampleSize != 0)
+		{
+			throw("The number of elements in the slot sequence is not a multiple of sample size");
+		}
+	}*/
+
 	// create min heap
 	pqWords[0] = priority_queue<wordsType>();
 	pqWords[1] = priority_queue<wordsType>();
@@ -364,20 +528,38 @@ bool poem::updateText(string s) {
 		if (!(slot & 1) || nodes[slot / 2].index != indexOfDot) { // prohibits changing dots
 			network1Output[indexOf$] = -100000000;
 			network1Output[indexOfDot] = -100000000; // prohibits adding dots
-			/*if (slot & 1) {
+			if (slot & 1) {
 				network1Output[nodes[slot / 2].index] = -100000000;
-			}*/
+			}
 			float total = 0;
 			for (int i = 0; i < outputSampleSize; i++) {
 				float p = exp(network1Output[i]);
 				total += p;
 			}
 			if (slot & 1) {
-				network1Output[nodes[slot / 2].index] = log(total + exp(network1Output[nodes[slot / 2].index])); // give the highest priority 50% to initial words
-				total = 0.5f / total;
+				network1Output[nodes[slot / 2].index] = log(total); // give the highest priority to initial words
+				/*float p = exp(network1Output[0]);
+				network1Output[0] = p / total*deleteProbs[slot/2]/totalDelete;
+				wordsType w = { offset };
+				pqWords[slot & 1].push(w);
+				total = insertProbs[slot] / totalReplace / total;
+				for (int i = 1; i < outputSampleSize; i++) {
+					float p = exp(network1Output[i]);
+					network1Output[i] = p * total;
+					wordsType w = { offset + i };
+					pqWords[slot & 1].push(w);
+				}*/
 			}
-			else 
-				total = 1 / total;
+			/*else {
+				total = insertProbs[slot] / total;
+				for (int i = 0; i < outputSampleSize; i++) {
+					float p = exp(network1Output[i]);
+					network1Output[i] = p * total;
+					wordsType w = { offset + i };
+					pqWords[slot & 1].push(w);
+				}
+			}*/
+			total = 1 / total;
 			for (int i = 0; i < outputSampleSize; i++) {
 				float p = exp(network1Output[i]);
 				network1Output[i] = p * total;
@@ -391,6 +573,16 @@ bool poem::updateText(string s) {
 			pqWords[1].push(w);
 		}
 	}
+
+	// add initial words to the top
+	/*network1Output = &wordsType::slotSeq[0];
+	float topWeight = wordsType::slotSeq[pqWords[1].top().number]+1;
+	for (int slot = 0; slot < nodes.size()-1;slot++) {
+		int ind = (2*slot+1) * outputSampleSize + nodes[slot].index;
+		network1Output[ind] = topWeight;
+		wordsType w = { ind };
+		pqWords[1].push(w);
+	}*/
 
 	// Adding a word to slot with extraction of new sentences
 	// It doesn't make sense to fill in all the above arrays based on the whole set of the words: it is impossible to
