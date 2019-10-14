@@ -7,7 +7,11 @@ More details in the article https://github.com/brand17/Poem-generator-from-russi
 # Interface
 
 Buttons "Next pattern" / "Previous pattern" - to move through different rhyme patterns.
+
 Buttons ">>" / "<<" - move through different rhythms for line.
+
 Combo boxes - choose another rhyme for rhyme pattern.
+
 Left mouse button - show other possible words.
+
 Right button - delete word.
